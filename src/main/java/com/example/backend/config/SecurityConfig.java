@@ -15,7 +15,10 @@ public class SecurityConfig {
         http
                 .csrf(csrf -> csrf.disable())
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers("/api/rooms/**").permitAll()
+                        .requestMatchers(
+                                "/api/rooms/**",
+                                "/api/games/**"
+                        ).permitAll()
                         .anyRequest().authenticated()
                 );
 
