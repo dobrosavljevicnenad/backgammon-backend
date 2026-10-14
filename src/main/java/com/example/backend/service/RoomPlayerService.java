@@ -54,7 +54,7 @@ public class RoomPlayerService {
     @Transactional
     public RoomPlayerResponse joinRoom(Long roomId, Long userId) {
 
-        Room room = roomRepository.findById(roomId)
+        Room room = roomRepository.findByIdForUpdate(roomId)
                 .orElseThrow(() -> new ResponseStatusException(
                         HttpStatus.NOT_FOUND, "Room not found"
                 ));
@@ -102,7 +102,7 @@ public class RoomPlayerService {
     @Transactional
     public void leaveRoom(Long roomId, Long userId) {
 
-        Room room = roomRepository.findById(roomId)
+        Room room = roomRepository.findByIdForUpdate(roomId)
                 .orElseThrow(() -> new ResponseStatusException(
                         HttpStatus.NOT_FOUND, "Room not found"
                 ));
