@@ -1,12 +1,12 @@
 package com.example.backend.controller;
 
-import com.example.backend.dto.AuthResponse;
-import com.example.backend.dto.RegisterRequest;
-import com.example.backend.dto.UserResponse;
+import com.example.backend.dto.request.LoginRequest;
+import com.example.backend.dto.request.RegisterRequest;
+import com.example.backend.dto.response.AuthResponse;
+import com.example.backend.dto.response.UserResponse;
 import com.example.backend.entity.User;
 import com.example.backend.exception.InvalidCredentialsException;
 import com.example.backend.jwt.JWTUtil;
-import com.example.backend.request.LogInRequest;
 import com.example.backend.service.UserService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -33,12 +33,16 @@ public class AuthController {
     }
 
     @PostMapping("/login")
-    public ResponseEntity<AuthResponse> login(@Valid @RequestBody LogInRequest request) {
-        User user = userService.getUserByEmail(request.getEmail())
+    public ResponseEntity<AuthResponse> login(@Valid @RequestBody LoginRequest request) {
+        User user = userService.getUserByEmail(request.email())
                 .orElseThrow(() -> new InvalidCredentialsException("Invalid email or password"));
 
-        if (!passwordEncoder.matches(request.getPassword(), user.getPasswordHash())) {
+        if (!passwordEncoder.matches(request.password(), user.getPasswordHash())) {
             throw new InvalidCredentialsException("Invalid email or password");
+        }
+
+        if (!user.isActive()) {
+            throw new InvalidCredentialsException("Account is disabled");
         }
 
         String token = jwtUtil.generateToken(user.getUsername(), user.getRole().name());

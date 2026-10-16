@@ -14,17 +14,4 @@ public interface UserRepository extends JpaRepository<User, Long> {
     boolean existsByUsername(String username);
 
     boolean existsByEmail(String email);
-
-    // Compatibility with authentication service
-    default Optional<User> getUserById(Long id) {
-        return findById(id);
-    }
-
-    default Optional<User> getUserByEmail(String email) {
-        return findByEmail(email);
-    }
-
-    default void deleteUserById(Long id) {
-        deleteById(id);
-    }
 }

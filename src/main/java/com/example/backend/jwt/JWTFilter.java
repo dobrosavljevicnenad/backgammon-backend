@@ -1,6 +1,7 @@
 package com.example.backend.jwt;
 
 import com.example.backend.service.UserService;
+import io.jsonwebtoken.JwtException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.core.userdetails.UserDetails;
@@ -35,7 +36,13 @@ public class JWTFilter extends OncePerRequestFilter{
 
             if(authHeader != null && authHeader.startsWith("Bearer ")) {
                 jwt = authHeader.substring(7);
-                username = jwtUtil.extractUsername(jwt);
+                try {
+                    username = jwtUtil.extractUsername(jwt);
+                } catch (JwtException | IllegalArgumentException e) {
+                    // Invalid or expired token: continue unauthenticated, so public
+                    // endpoints still work and protected ones are rejected with 401.
+                    username = null;
+                }
             }
 
             if (username != null && SecurityContextHolder.getContext().getAuthentication() == null) {
@@ -46,7 +53,7 @@ public class JWTFilter extends OncePerRequestFilter{
                     System.out.println("User not found: " + username);
                 }
 
-                if (userDetails != null && jwtUtil.validateToken(jwt, userDetails)) {
+                if (userDetails != null && userDetails.isEnabled() && jwtUtil.validateToken(jwt, userDetails)) {
                     UsernamePasswordAuthenticationToken usernamePasswordAuthenticationToken = new UsernamePasswordAuthenticationToken(
                             userDetails, null, userDetails.getAuthorities());
                     usernamePasswordAuthenticationToken

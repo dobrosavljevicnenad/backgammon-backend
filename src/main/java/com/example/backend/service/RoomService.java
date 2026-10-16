@@ -12,7 +12,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 @Service
 public class RoomService {
@@ -32,10 +34,7 @@ public class RoomService {
     // GET ALL ROOMS
     @Transactional(readOnly = true)
     public List<RoomResponse> getAllRooms() {
-        return roomRepository.findAll()
-                .stream()
-                .map(this::toResponse)
-                .toList();
+        return toResponses(roomRepository.findAll());
     }
 
     // GET ROOM BY ID
@@ -57,11 +56,9 @@ public class RoomService {
     @Transactional(readOnly = true)
     public List<RoomResponse> getWaitingRooms() {
 
-        return roomRepository
-                .findByStatus(RoomStatus.WAITING)
-                .stream()
-                .map(this::toResponse)
-                .toList();
+        return toResponses(
+                roomRepository.findByStatus(RoomStatus.WAITING)
+        );
     }
 
     // CREATE ROOM
@@ -78,11 +75,41 @@ public class RoomService {
         return toResponse(savedRoom);
     }
 
+    // CONVERT ENTITIES TO DTOs (one count query for all rooms)
+    private List<RoomResponse> toResponses(List<Room> rooms) {
+
+        if (rooms.isEmpty()) {
+            return List.of();
+        }
+
+        Map<Long, Long> playerCounts = new HashMap<>();
+
+        roomPlayerRepository
+                .countPlayersByRoomIds(
+                        rooms.stream().map(Room::getId).toList()
+                )
+                .forEach(row -> playerCounts.put(
+                        (Long) row[0],
+                        (Long) row[1]
+                ));
+
+        return rooms.stream()
+                .map(room -> toResponse(
+                        room,
+                        playerCounts.getOrDefault(room.getId(), 0L)
+                ))
+                .toList();
+    }
+
     // CONVERT ENTITY TO DTO
     private RoomResponse toResponse(Room room) {
+        return toResponse(
+                room,
+                roomPlayerRepository.countByRoomId(room.getId())
+        );
+    }
 
-        long playerCount =
-                roomPlayerRepository.countByRoomId(room.getId());
+    private RoomResponse toResponse(Room room, long playerCount) {
 
         return new RoomResponse(
                 room.getId(),
