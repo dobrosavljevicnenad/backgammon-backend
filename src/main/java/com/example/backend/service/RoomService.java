@@ -3,6 +3,8 @@ package com.example.backend.service;
 import com.example.backend.dto.request.CreateRoomRequest;
 import com.example.backend.dto.response.RoomResponse;
 import com.example.backend.entity.Room;
+import com.example.backend.entity.RoomPlayer;
+import com.example.backend.entity.User;
 import com.example.backend.enums.RoomStatus;
 import com.example.backend.repository.RoomPlayerRepository;
 import com.example.backend.repository.RoomRepository;
@@ -15,20 +17,24 @@ import org.springframework.web.server.ResponseStatusException;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 @Service
 public class RoomService {
 
     private final RoomRepository roomRepository;
     private final RoomPlayerRepository roomPlayerRepository;
+    private final RoomMembershipRules roomMembershipRules;
 
     // Constructor Dependency Injection
     public RoomService(
             RoomRepository roomRepository,
-            RoomPlayerRepository roomPlayerRepository
+            RoomPlayerRepository roomPlayerRepository,
+            RoomMembershipRules roomMembershipRules
     ) {
         this.roomRepository = roomRepository;
         this.roomPlayerRepository = roomPlayerRepository;
+        this.roomMembershipRules = roomMembershipRules;
     }
 
     // GET ALL ROOMS
@@ -61,9 +67,23 @@ public class RoomService {
         );
     }
 
-    // CREATE ROOM
+    // GET CURRENT USER'S ACTIVE ROOM (WAITING or PLAYING), if any
+    @Transactional(readOnly = true)
+    public Optional<RoomResponse> getCurrentRoom(Long userId) {
+
+        return roomPlayerRepository
+                .findFirstByUserIdAndRoomStatusIn(
+                        userId,
+                        RoomMembershipRules.ACTIVE_ROOM_STATUSES
+                )
+                .map(player -> toResponse(player.getRoom()));
+    }
+
+    // CREATE ROOM - the creator becomes the host in the same transaction
     @Transactional
-    public RoomResponse createRoom(CreateRoomRequest request) {
+    public RoomResponse createRoom(CreateRoomRequest request, Long userId) {
+
+        User host = roomMembershipRules.lockUserForNewRoom(userId);
 
         Room room = new Room();
 
@@ -72,7 +92,14 @@ public class RoomService {
 
         Room savedRoom = roomRepository.save(room);
 
-        return toResponse(savedRoom);
+        RoomPlayer hostPlayer = new RoomPlayer();
+        hostPlayer.setRoom(savedRoom);
+        hostPlayer.setUser(host);
+        hostPlayer.setHost(true);
+
+        roomPlayerRepository.save(hostPlayer);
+
+        return toResponse(savedRoom, 1);
     }
 
     // CONVERT ENTITIES TO DTOs (one count query for all rooms)

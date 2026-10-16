@@ -1,10 +1,8 @@
 package com.example.backend.controller;
 
-import com.example.backend.dto.request.JoinRoomRequest;
 import com.example.backend.dto.response.RoomPlayerResponse;
+import com.example.backend.service.CurrentUserService;
 import com.example.backend.service.RoomPlayerService;
-
-import jakarta.validation.Valid;
 
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.*;
@@ -16,9 +14,14 @@ import java.util.List;
 public class RoomPlayerController {
 
     private final RoomPlayerService roomPlayerService;
+    private final CurrentUserService currentUserService;
 
-    public RoomPlayerController(RoomPlayerService roomPlayerService) {
+    public RoomPlayerController(
+            RoomPlayerService roomPlayerService,
+            CurrentUserService currentUserService
+    ) {
         this.roomPlayerService = roomPlayerService;
+        this.currentUserService = currentUserService;
     }
 
     // GET /api/rooms/1/players
@@ -29,23 +32,27 @@ public class RoomPlayerController {
         return roomPlayerService.getRoomPlayers(roomId);
     }
 
-    // POST /api/rooms/1/join
+    // POST /api/rooms/1/join - the logged-in user joins (no body)
     @PostMapping("/join")
     @ResponseStatus(HttpStatus.CREATED)
     public RoomPlayerResponse joinRoom(
-            @PathVariable Long roomId,
-            @Valid @RequestBody JoinRoomRequest request
+            @PathVariable Long roomId
     ) {
-        return roomPlayerService.joinRoom(roomId, request.userId());
+        return roomPlayerService.joinRoom(
+                roomId,
+                currentUserService.getCurrentUserId()
+        );
     }
 
-    // DELETE /api/rooms/1/players/2
-    @DeleteMapping("/players/{userId}")
+    // POST /api/rooms/1/leave - the logged-in user leaves (host leaving deletes the room)
+    @PostMapping("/leave")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void leaveRoom(
-            @PathVariable Long roomId,
-            @PathVariable Long userId
+            @PathVariable Long roomId
     ) {
-        roomPlayerService.leaveRoom(roomId, userId);
+        roomPlayerService.leaveRoom(
+                roomId,
+                currentUserService.getCurrentUserId()
+        );
     }
 }

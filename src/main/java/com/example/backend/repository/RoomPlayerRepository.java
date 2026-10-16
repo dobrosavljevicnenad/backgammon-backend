@@ -1,6 +1,7 @@
 package com.example.backend.repository;
 
 import com.example.backend.entity.RoomPlayer;
+import com.example.backend.enums.RoomStatus;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -10,7 +11,9 @@ import java.util.List;
 import java.util.Optional;
 
 public interface RoomPlayerRepository extends JpaRepository<RoomPlayer, Long> {
-    List<RoomPlayer> findByRoomId(Long roomId);
+
+    // Ordered by join time, so the host (first player) comes first
+    List<RoomPlayer> findByRoomIdOrderByJoinedAtAscIdAsc(Long roomId);
 
     boolean existsByRoomIdAndUserId(Long roomId, Long userId);
 
@@ -31,4 +34,9 @@ public interface RoomPlayerRepository extends JpaRepository<RoomPlayer, Long> {
     );
 
     Optional<RoomPlayer> findByRoomIdAndIsHostTrue(Long roomId);
+
+    // "Is this user already in a WAITING/PLAYING room?"
+    boolean existsByUserIdAndRoomStatusIn(Long userId, Collection<RoomStatus> statuses);
+
+    Optional<RoomPlayer> findFirstByUserIdAndRoomStatusIn(Long userId, Collection<RoomStatus> statuses);
 }

@@ -61,12 +61,6 @@ public class SecurityConfig {
                                 "/auth/login"
                         ).permitAll()
 
-                        // Temporary access for local development
-                        .requestMatchers(
-                                "/api/rooms/**",
-                                "/api/games/**"
-                        ).permitAll()
-
                         .anyRequest().authenticated()
                 );
 

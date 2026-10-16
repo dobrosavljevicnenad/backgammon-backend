@@ -7,7 +7,6 @@ import com.example.backend.entity.User;
 import com.example.backend.enums.RoomStatus;
 import com.example.backend.repository.RoomPlayerRepository;
 import com.example.backend.repository.RoomRepository;
-import com.example.backend.repository.UserRepository;
 
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -21,16 +20,16 @@ public class RoomPlayerService {
 
     private final RoomPlayerRepository roomPlayerRepository;
     private final RoomRepository roomRepository;
-    private final UserRepository userRepository;
+    private final RoomMembershipRules roomMembershipRules;
 
     public RoomPlayerService(
             RoomPlayerRepository roomPlayerRepository,
             RoomRepository roomRepository,
-            UserRepository userRepository
+            RoomMembershipRules roomMembershipRules
     ) {
         this.roomPlayerRepository = roomPlayerRepository;
         this.roomRepository = roomRepository;
-        this.userRepository = userRepository;
+        this.roomMembershipRules = roomMembershipRules;
     }
 
     // GET ALL PLAYERS IN A ROOM
@@ -44,41 +43,27 @@ public class RoomPlayerService {
             );
         }
 
-        return roomPlayerRepository.findByRoomId(roomId)
+        return roomPlayerRepository.findByRoomIdOrderByJoinedAtAscIdAsc(roomId)
                 .stream()
                 .map(this::toResponse)
                 .toList();
     }
 
-    // JOIN ROOM
+    // JOIN ROOM - the second player joins as a guest
     @Transactional
     public RoomPlayerResponse joinRoom(Long roomId, Long userId) {
+
+        // Lock order: user first, then room (same as everywhere else)
+        User user = roomMembershipRules.lockUserForNewRoom(userId);
 
         Room room = roomRepository.findByIdForUpdate(roomId)
                 .orElseThrow(() -> new ResponseStatusException(
                         HttpStatus.NOT_FOUND, "Room not found"
                 ));
 
-        User user = userRepository.findById(userId)
-                .orElseThrow(() -> new ResponseStatusException(
-                        HttpStatus.NOT_FOUND, "User not found"
-                ));
-
-        if (!user.isActive()) {
-            throw new ResponseStatusException(
-                    HttpStatus.FORBIDDEN, "User is inactive"
-            );
-        }
-
         if (room.getStatus() != RoomStatus.WAITING) {
             throw new ResponseStatusException(
                     HttpStatus.CONFLICT, "Room is not waiting for players"
-            );
-        }
-
-        if (roomPlayerRepository.existsByRoomIdAndUserId(roomId, userId)) {
-            throw new ResponseStatusException(
-                    HttpStatus.CONFLICT, "User already joined this room"
             );
         }
 
@@ -93,12 +78,16 @@ public class RoomPlayerService {
         RoomPlayer roomPlayer = new RoomPlayer();
         roomPlayer.setRoom(room);
         roomPlayer.setUser(user);
-        roomPlayer.setHost(playerCount == 0);
+        // The host is created together with the room, so a joining player is never host.
+        // An empty WAITING room cannot exist, because the room is deleted when the host leaves.
+        roomPlayer.setHost(false);
 
         return toResponse(roomPlayerRepository.save(roomPlayer));
     }
 
-    // LEAVE ROOM
+    // LEAVE ROOM (before the game starts)
+    // Host leaves  -> room is deleted (PRD 8)
+    // Guest leaves -> only the guest is removed, room goes back to 1/2
     @Transactional
     public void leaveRoom(Long roomId, Long userId) {
 
@@ -107,30 +96,28 @@ public class RoomPlayerService {
                         HttpStatus.NOT_FOUND, "Room not found"
                 ));
 
+        RoomPlayer player = roomPlayerRepository
+                .findByRoomIdAndUserId(roomId, userId)
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.NOT_FOUND,
+                        "You are not in this room"
+                ));
+
         if (room.getStatus() != RoomStatus.WAITING) {
+            // Leaving an active game (opponent wins) belongs to the game flow
             throw new ResponseStatusException(
                     HttpStatus.CONFLICT,
                     "Cannot leave a room while a game is in progress"
             );
         }
 
-        RoomPlayer player = roomPlayerRepository
-                .findByRoomIdAndUserId(roomId, userId)
-                .orElseThrow(() -> new ResponseStatusException(
-                        HttpStatus.NOT_FOUND,
-                        "User is not in this room"
-                ));
-
-        boolean wasHost = player.isHost();
-
-        roomPlayerRepository.delete(player);
-        roomPlayerRepository.flush();
-
-        if (wasHost) {
-            roomPlayerRepository.findByRoomId(roomId)
-                    .stream()
-                    .findFirst()
-                    .ifPresent(nextHost -> nextHost.setHost(true));
+        if (player.isHost()) {
+            roomPlayerRepository.deleteAll(
+                    roomPlayerRepository.findByRoomIdOrderByJoinedAtAscIdAsc(roomId)
+            );
+            roomRepository.delete(room);
+        } else {
+            roomPlayerRepository.delete(player);
         }
     }
 

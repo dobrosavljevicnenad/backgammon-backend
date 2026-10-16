@@ -1,6 +1,7 @@
 package com.example.backend.dto.response;
 
 import com.example.backend.enums.GameStatus;
+import tools.jackson.databind.JsonNode;
 import java.time.Instant;
 
 public record GameResponse(
@@ -8,7 +9,7 @@ public record GameResponse(
         Long roomId,
         GameStatus status,
         Long currentTurnUserId,
-        String currentState,
+        JsonNode currentState,
         int turnNumber,
         Instant turnDeadline,
         Instant startedAt,
