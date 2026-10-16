@@ -2,18 +2,29 @@ package com.example.backend.repository;
 
 import com.example.backend.entity.User;
 import org.springframework.data.jpa.repository.JpaRepository;
-import org.springframework.stereotype.Repository;
 
 import java.util.Optional;
 
-@Repository
-public interface UserRepository extends JpaRepository<User, Integer> {
+public interface UserRepository extends JpaRepository<User, Long> {
 
-    Optional<User>findByUsername(String username);
-    Optional<User> getUserById(Long id);
-    void deleteUserById(Long id);
+    Optional<User> findByUsername(String username);
+
+    Optional<User> findByEmail(String email);
+
+    boolean existsByUsername(String username);
+
     boolean existsByEmail(String email);
-    boolean existsByUsername(String email);
-    Optional<User> getUserByEmail(String email);
 
+    // Compatibility with authentication service
+    default Optional<User> getUserById(Long id) {
+        return findById(id);
+    }
+
+    default Optional<User> getUserByEmail(String email) {
+        return findByEmail(email);
+    }
+
+    default void deleteUserById(Long id) {
+        deleteById(id);
+    }
 }
