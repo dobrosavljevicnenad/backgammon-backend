@@ -22,6 +22,7 @@ import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
 import java.security.SecureRandom;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -141,6 +142,48 @@ public class GameService {
         roomRepository.save(room);
 
         return toResponse(savedGame);
+    }
+
+    // FINISH GAME - a player gives up. Game becomes ABANDONED, room becomes CLOSED,
+    // so both players can create or join a new room afterwards.
+    // TODO: game engine step - replace with the real end-of-game flow (winner, FINISHED)
+    @Transactional
+    public GameResponse finishGame(Long gameId, Long userId) {
+
+        Game game = gameRepository.findById(gameId)
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.NOT_FOUND,
+                        "Game not found"
+                ));
+
+        if (!gamePlayerRepository.existsByGameIdAndUserId(gameId, userId)) {
+            throw new ResponseStatusException(
+                    HttpStatus.FORBIDDEN,
+                    "You are not a player in this game"
+            );
+        }
+
+        if (game.getStatus() != GameStatus.IN_PROGRESS) {
+            throw new ResponseStatusException(
+                    HttpStatus.CONFLICT,
+                    "Game is not in progress"
+            );
+        }
+
+        // Same lock as startGame, so room and game status change together
+        Room room = roomRepository.findByIdForUpdate(game.getRoom().getId())
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.NOT_FOUND,
+                        "Room not found"
+                ));
+
+        game.setStatus(GameStatus.ABANDONED);
+        game.setFinishedAt(Instant.now());
+        room.setStatus(RoomStatus.CLOSED);
+
+        roomRepository.save(room);
+
+        return toResponse(gameRepository.save(game));
     }
 
     // GET GAME BY ID

@@ -37,6 +37,17 @@ public class GameController {
         );
     }
 
+    // POST /api/games/1/finish - a player gives up, game is ABANDONED and room is CLOSED
+    @PostMapping("/{gameId}/finish")
+    public GameResponse finishGame(
+            @PathVariable Long gameId
+    ) {
+        return gameService.finishGame(
+                gameId,
+                currentUserService.getCurrentUserId()
+        );
+    }
+
     // GET /api/games/1
     @GetMapping("/{gameId}")
     public GameResponse getGameById(

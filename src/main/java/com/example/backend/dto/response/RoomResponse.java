@@ -8,5 +8,6 @@ public record RoomResponse(
         String name,
         RoomStatus status,
         long playerCount,
-        Instant createdAt
+        Instant createdAt,
+        Long gameId
 ) {}
