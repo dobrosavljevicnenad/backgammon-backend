@@ -13,6 +13,9 @@ import com.example.backend.repository.GamePlayerRepository;
 import com.example.backend.repository.GameRepository;
 import com.example.backend.repository.RoomPlayerRepository;
 import com.example.backend.repository.RoomRepository;
+import com.example.backend.dto.response.MoveResponse;
+import com.example.backend.entity.Move;
+import com.example.backend.repository.MoveRepository;
 
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -36,6 +39,7 @@ public class GameService {
     private final RoomRepository roomRepository;
     private final RoomPlayerRepository roomPlayerRepository;
     private final InitialGameStateFactory initialGameStateFactory;
+    private final MoveRepository moveRepository;
     private final ObjectMapper objectMapper;
     private final Random random = new SecureRandom();
 
@@ -45,7 +49,8 @@ public class GameService {
             RoomRepository roomRepository,
             RoomPlayerRepository roomPlayerRepository,
             InitialGameStateFactory initialGameStateFactory,
-            ObjectMapper objectMapper
+            ObjectMapper objectMapper,
+            MoveRepository moveRepository
     ) {
         this.gameRepository = gameRepository;
         this.gamePlayerRepository = gamePlayerRepository;
@@ -53,6 +58,7 @@ public class GameService {
         this.roomPlayerRepository = roomPlayerRepository;
         this.initialGameStateFactory = initialGameStateFactory;
         this.objectMapper = objectMapper;
+        this.moveRepository = moveRepository;
     }
 
     // START GAME - only the host, only with exactly two players
@@ -214,6 +220,45 @@ public class GameService {
                 .stream()
                 .map(this::toPlayerResponse)
                 .toList();
+    }
+
+    // GET MOVES OF A GAME - only players of that game can see them
+    @Transactional(readOnly = true)
+    public List<MoveResponse> getMoves(Long gameId, Long userId) {
+
+        if (!gameRepository.existsById(gameId)) {
+            throw new ResponseStatusException(
+                    HttpStatus.NOT_FOUND,
+                    "Game not found"
+            );
+        }
+
+        if (!gamePlayerRepository.existsByGameIdAndUserId(gameId, userId)) {
+            throw new ResponseStatusException(
+                    HttpStatus.FORBIDDEN,
+                    "You are not a player in this game"
+            );
+        }
+
+        return moveRepository.findByGameIdOrderByTurnNumberAscMoveNumberAsc(gameId)
+                .stream()
+                .map(this::toMoveResponse)
+                .toList();
+    }
+
+    // ENTITY -> DTO
+    private MoveResponse toMoveResponse(Move move) {
+        return new MoveResponse(
+                move.getId(),
+                move.getGame().getId(),
+                move.getGamePlayer().getId(),
+                move.getTurnNumber(),
+                move.getMoveNumber(),
+                move.getFromPosition(),
+                move.getToPosition(),
+                move.getDiceValue(),
+                move.getCreatedAt()
+        );
     }
 
     // ENTITY -> DTO

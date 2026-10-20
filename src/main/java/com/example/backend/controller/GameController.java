@@ -1,6 +1,7 @@
 package com.example.backend.controller;
 
 import com.example.backend.dto.response.GameResponse;
+import com.example.backend.dto.response.MoveResponse;
 import com.example.backend.dto.response.GamePlayerResponse;
 import com.example.backend.service.CurrentUserService;
 import com.example.backend.service.GameService;
@@ -63,4 +64,17 @@ public class GameController {
     ) {
         return gameService.getGamePlayers(gameId);
     }
+
+    // GET /api/games/1/moves - all moves of the game, only for its players
+    @GetMapping("/{gameId}/moves")
+    public List<MoveResponse> getMoves(
+            @PathVariable Long gameId
+    ) {
+        return gameService.getMoves(
+                gameId,
+                currentUserService.getCurrentUserId()
+        );
+    }
+
+
 }
