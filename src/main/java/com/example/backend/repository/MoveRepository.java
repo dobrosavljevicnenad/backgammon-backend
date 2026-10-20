@@ -16,4 +16,9 @@ public interface MoveRepository extends JpaRepository<Move, Long> {
             Integer turnNumber,
             Integer moveNumber
     );
+
+    int countByGameIdAndTurnNumber(
+            Long gameId,
+            int turnNumber
+    );
 }

@@ -35,6 +35,7 @@ public class GameService {
     private final RoomRepository roomRepository;
     private final RoomPlayerRepository roomPlayerRepository;
     private final InitialGameStateFactory initialGameStateFactory;
+    private final GameUpdateBroadcaster broadcaster;
     private final ObjectMapper objectMapper;
     private final Random random = new SecureRandom();
 
@@ -44,6 +45,7 @@ public class GameService {
             RoomRepository roomRepository,
             RoomPlayerRepository roomPlayerRepository,
             InitialGameStateFactory initialGameStateFactory,
+            GameUpdateBroadcaster broadcaster,
             ObjectMapper objectMapper
     ) {
         this.gameRepository = gameRepository;
@@ -51,6 +53,7 @@ public class GameService {
         this.roomRepository = roomRepository;
         this.roomPlayerRepository = roomPlayerRepository;
         this.initialGameStateFactory = initialGameStateFactory;
+        this.broadcaster = broadcaster;
         this.objectMapper = objectMapper;
     }
 
@@ -140,7 +143,9 @@ public class GameService {
         room.setStatus(RoomStatus.PLAYING);
         roomRepository.save(room);
 
-        return toResponse(savedGame);
+        GameResponse response = toResponse(savedGame);
+        broadcaster.broadcast(response);
+        return response;
     }
 
     // GET GAME BY ID
@@ -173,8 +178,8 @@ public class GameService {
                 .toList();
     }
 
-    // ENTITY -> DTO
-    private GameResponse toResponse(Game game) {
+    // ENTITY -> DTO (package-private: reused by MoveService)
+    GameResponse toResponse(Game game) {
 
         Long currentTurnUserId =
                 game.getCurrentTurnUser() == null
