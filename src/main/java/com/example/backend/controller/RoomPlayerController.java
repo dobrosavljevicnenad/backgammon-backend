@@ -29,7 +29,10 @@ public class RoomPlayerController {
     public List<RoomPlayerResponse> getPlayers(
             @PathVariable Long roomId
     ) {
-        return roomPlayerService.getRoomPlayers(roomId);
+        return roomPlayerService.getRoomPlayers(
+                roomId,
+                currentUserService.getCurrentUserId()
+        );
     }
 
     // POST /api/rooms/1/join - the logged-in user joins (no body)
