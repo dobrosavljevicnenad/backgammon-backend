@@ -44,7 +44,11 @@ public class RoomService {
     // GET ALL ROOMS
     @Transactional(readOnly = true)
     public List<RoomResponse> getAllRooms() {
-        return toResponses(roomRepository.findAll());
+        return toResponses(
+                roomRepository.findByStatusInOrderByCreatedAtDesc(
+                        RoomMembershipRules.ACTIVE_ROOM_STATUSES
+                )
+        );
     }
 
     // GET ROOM BY ID
