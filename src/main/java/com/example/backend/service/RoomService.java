@@ -1,6 +1,8 @@
 package com.example.backend.service;
 
 import com.example.backend.dto.request.CreateRoomRequest;
+import com.example.backend.dto.response.RoomDetailsResponse;
+import com.example.backend.dto.response.RoomPlayerResponse;
 import com.example.backend.dto.response.RoomResponse;
 import com.example.backend.entity.Room;
 import com.example.backend.entity.RoomPlayer;
@@ -27,18 +29,21 @@ public class RoomService {
     private final RoomPlayerRepository roomPlayerRepository;
     private final GameRepository gameRepository;
     private final RoomMembershipRules roomMembershipRules;
+    private final RoomPlayerService roomPlayerService;
 
     // Constructor Dependency Injection
     public RoomService(
             RoomRepository roomRepository,
             RoomPlayerRepository roomPlayerRepository,
             GameRepository gameRepository,
-            RoomMembershipRules roomMembershipRules
+            RoomMembershipRules roomMembershipRules,
+            RoomPlayerService roomPlayerService
     ) {
         this.roomRepository = roomRepository;
         this.roomPlayerRepository = roomPlayerRepository;
         this.gameRepository = gameRepository;
         this.roomMembershipRules = roomMembershipRules;
+        this.roomPlayerService = roomPlayerService;
     }
 
     // GET ALL ROOMS
@@ -53,7 +58,9 @@ public class RoomService {
 
     // GET ROOM BY ID
     @Transactional(readOnly = true)
-    public RoomResponse getRoomById(Long id) {
+    public RoomDetailsResponse getRoomById(Long id, Long userId) {
+
+        List<RoomPlayerResponse> players = roomPlayerService.getRoomPlayers(id, userId);
 
         Room room = roomRepository.findById(id)
                 .orElseThrow(() ->
@@ -63,7 +70,18 @@ public class RoomService {
                         )
                 );
 
-        return toResponse(room);
+        return new RoomDetailsResponse(
+                room.getId(),
+                room.getName(),
+                room.getStatus(),
+                players.size(),
+                2,
+                room.getCreatedAt(),
+                gameRepository.findByRoomId(id)
+                        .map(game -> game.getId())
+                        .orElse(null),
+                players
+        );
     }
 
     // GET WAITING ROOMS

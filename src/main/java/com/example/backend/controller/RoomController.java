@@ -1,6 +1,7 @@
 package com.example.backend.controller;
 
 import com.example.backend.dto.request.CreateRoomRequest;
+import com.example.backend.dto.response.RoomDetailsResponse;
 import com.example.backend.dto.response.RoomResponse;
 import com.example.backend.service.CurrentUserService;
 import com.example.backend.service.RoomService;
@@ -10,8 +11,10 @@ import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 
 import java.util.List;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/rooms")
@@ -48,10 +51,16 @@ public class RoomController {
                 .orElseGet(() -> ResponseEntity.noContent().build());
     }
 
-    // GET /api/rooms/5
+    // GET /api/rooms/5 - only members, including for CLOSED rooms
     @GetMapping("/{id}")
-    public RoomResponse getRoomById(@PathVariable Long id) {
-        return roomService.getRoomById(id);
+    public RoomDetailsResponse getRoomById(@PathVariable Long id) {
+        return roomService.getRoomById(id, currentUserService.getCurrentUserId());
+    }
+
+    @ExceptionHandler(MethodArgumentTypeMismatchException.class)
+    @ResponseStatus(HttpStatus.BAD_REQUEST)
+    public Map<String, String> handleInvalidRoomId() {
+        return Map.of("message", "Room ID must be a positive integer");
     }
 
     // POST /api/rooms - the logged-in user becomes the host
