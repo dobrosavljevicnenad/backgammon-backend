@@ -51,7 +51,6 @@ public class GameService {
             RoomPlayerRepository roomPlayerRepository,
             InitialGameStateFactory initialGameStateFactory,
             GameUpdateBroadcaster broadcaster,
-            ObjectMapper objectMapper
             ObjectMapper objectMapper,
             MoveRepository moveRepository
     ) {
@@ -228,8 +227,6 @@ public class GameService {
                 .toList();
     }
 
-    // ENTITY -> DTO (package-private: reused by MoveService)
-    GameResponse toResponse(Game game) {
     // GET MOVES OF A GAME - only players of that game can see them
     @Transactional(readOnly = true)
     public List<MoveResponse> getMoves(Long gameId, Long userId) {
@@ -269,8 +266,8 @@ public class GameService {
         );
     }
 
-    // ENTITY -> DTO
-    private GameResponse toResponse(Game game) {
+    // ENTITY -> DTO (package-private: reused by MoveService)
+    GameResponse toResponse(Game game) {
 
         Long currentTurnUserId =
                 game.getCurrentTurnUser() == null

@@ -4,7 +4,6 @@ import com.example.backend.dto.request.MakeMoveRequest;
 import com.example.backend.dto.response.GameResponse;
 import com.example.backend.dto.response.MoveResponse;
 import com.example.backend.dto.response.GamePlayerResponse;
-import com.example.backend.dto.response.GameResponse;
 import com.example.backend.dto.response.LegalMoveResponse;
 import com.example.backend.service.CurrentUserService;
 import com.example.backend.service.GameService;
@@ -79,6 +78,11 @@ public class GameController {
             @PathVariable Long gameId
     ) {
         return moveService.rollDice(
+                gameId,
+                currentUserService.getCurrentUserId()
+        );
+    }
+
     // GET /api/games/1/moves - all moves of the game, only for its players
     @GetMapping("/{gameId}/moves")
     public List<MoveResponse> getMoves(
