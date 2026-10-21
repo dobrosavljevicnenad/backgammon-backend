@@ -1,11 +1,14 @@
 package com.example.backend.service;
 
 import com.example.backend.dto.request.CreateRoomRequest;
+import com.example.backend.dto.response.RoomDetailsResponse;
+import com.example.backend.dto.response.RoomPlayerResponse;
 import com.example.backend.dto.response.RoomResponse;
 import com.example.backend.entity.Room;
 import com.example.backend.entity.RoomPlayer;
 import com.example.backend.entity.User;
 import com.example.backend.enums.RoomStatus;
+import com.example.backend.repository.GameRepository;
 import com.example.backend.repository.RoomPlayerRepository;
 import com.example.backend.repository.RoomRepository;
 
@@ -24,28 +27,40 @@ public class RoomService {
 
     private final RoomRepository roomRepository;
     private final RoomPlayerRepository roomPlayerRepository;
+    private final GameRepository gameRepository;
     private final RoomMembershipRules roomMembershipRules;
+    private final RoomPlayerService roomPlayerService;
 
     // Constructor Dependency Injection
     public RoomService(
             RoomRepository roomRepository,
             RoomPlayerRepository roomPlayerRepository,
-            RoomMembershipRules roomMembershipRules
+            GameRepository gameRepository,
+            RoomMembershipRules roomMembershipRules,
+            RoomPlayerService roomPlayerService
     ) {
         this.roomRepository = roomRepository;
         this.roomPlayerRepository = roomPlayerRepository;
+        this.gameRepository = gameRepository;
         this.roomMembershipRules = roomMembershipRules;
+        this.roomPlayerService = roomPlayerService;
     }
 
     // GET ALL ROOMS
     @Transactional(readOnly = true)
     public List<RoomResponse> getAllRooms() {
-        return toResponses(roomRepository.findAll());
+        return toResponses(
+                roomRepository.findByStatusInOrderByCreatedAtDesc(
+                        RoomMembershipRules.ACTIVE_ROOM_STATUSES
+                )
+        );
     }
 
     // GET ROOM BY ID
     @Transactional(readOnly = true)
-    public RoomResponse getRoomById(Long id) {
+    public RoomDetailsResponse getRoomById(Long id, Long userId) {
+
+        List<RoomPlayerResponse> players = roomPlayerService.getRoomPlayers(id, userId);
 
         Room room = roomRepository.findById(id)
                 .orElseThrow(() ->
@@ -55,7 +70,18 @@ public class RoomService {
                         )
                 );
 
-        return toResponse(room);
+        return new RoomDetailsResponse(
+                room.getId(),
+                room.getName(),
+                room.getStatus(),
+                players.size(),
+                2,
+                room.getCreatedAt(),
+                gameRepository.findByRoomId(id)
+                        .map(game -> game.getId())
+                        .orElse(null),
+                players
+        );
     }
 
     // GET WAITING ROOMS
@@ -99,23 +125,32 @@ public class RoomService {
 
         roomPlayerRepository.save(hostPlayer);
 
-        return toResponse(savedRoom, 1);
+        return toResponse(savedRoom, 1, null);
     }
 
-    // CONVERT ENTITIES TO DTOs (one count query for all rooms)
+    // CONVERT ENTITIES TO DTOs (one count query and one game query for all rooms)
     private List<RoomResponse> toResponses(List<Room> rooms) {
 
         if (rooms.isEmpty()) {
             return List.of();
         }
 
+        List<Long> roomIds = rooms.stream().map(Room::getId).toList();
+
         Map<Long, Long> playerCounts = new HashMap<>();
 
         roomPlayerRepository
-                .countPlayersByRoomIds(
-                        rooms.stream().map(Room::getId).toList()
-                )
+                .countPlayersByRoomIds(roomIds)
                 .forEach(row -> playerCounts.put(
+                        (Long) row[0],
+                        (Long) row[1]
+                ));
+
+        Map<Long, Long> gameIds = new HashMap<>();
+
+        gameRepository
+                .findGameIdsByRoomIds(roomIds)
+                .forEach(row -> gameIds.put(
                         (Long) row[0],
                         (Long) row[1]
                 ));
@@ -123,7 +158,8 @@ public class RoomService {
         return rooms.stream()
                 .map(room -> toResponse(
                         room,
-                        playerCounts.getOrDefault(room.getId(), 0L)
+                        playerCounts.getOrDefault(room.getId(), 0L),
+                        gameIds.get(room.getId())
                 ))
                 .toList();
     }
@@ -132,18 +168,22 @@ public class RoomService {
     private RoomResponse toResponse(Room room) {
         return toResponse(
                 room,
-                roomPlayerRepository.countByRoomId(room.getId())
+                roomPlayerRepository.countByRoomId(room.getId()),
+                gameRepository.findByRoomId(room.getId())
+                        .map(game -> game.getId())
+                        .orElse(null)
         );
     }
 
-    private RoomResponse toResponse(Room room, long playerCount) {
+    private RoomResponse toResponse(Room room, long playerCount, Long gameId) {
 
         return new RoomResponse(
                 room.getId(),
                 room.getName(),
                 room.getStatus(),
                 playerCount,
-                room.getCreatedAt()
+                room.getCreatedAt(),
+                gameId
         );
     }
 }

@@ -18,7 +18,7 @@ public interface RoomRepository extends JpaRepository<Room, Long> {
     // vraca sobe koje cekaju igrace
     List<Room> findByStatus(RoomStatus status);
 
-    List<Room> findByStatusOrderByCreatedAtDesc(RoomStatus status);
+    List<Room> findByStatusInOrderByCreatedAtDesc(List<RoomStatus> statuses);
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("SELECT r FROM Room r WHERE r.id = :roomId")

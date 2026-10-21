@@ -1,6 +1,8 @@
 package com.example.backend.controller;
 
 import com.example.backend.dto.request.MakeMoveRequest;
+import com.example.backend.dto.response.GameResponse;
+import com.example.backend.dto.response.MoveResponse;
 import com.example.backend.dto.response.GamePlayerResponse;
 import com.example.backend.dto.response.GameResponse;
 import com.example.backend.dto.response.LegalMoveResponse;
@@ -44,6 +46,17 @@ public class GameController {
         );
     }
 
+    // POST /api/games/1/finish - a player gives up, game is ABANDONED and room is CLOSED
+    @PostMapping("/{gameId}/finish")
+    public GameResponse finishGame(
+            @PathVariable Long gameId
+    ) {
+        return gameService.finishGame(
+                gameId,
+                currentUserService.getCurrentUserId()
+        );
+    }
+
     // GET /api/games/1
     @GetMapping("/{gameId}")
     public GameResponse getGameById(
@@ -66,6 +79,12 @@ public class GameController {
             @PathVariable Long gameId
     ) {
         return moveService.rollDice(
+    // GET /api/games/1/moves - all moves of the game, only for its players
+    @GetMapping("/{gameId}/moves")
+    public List<MoveResponse> getMoves(
+            @PathVariable Long gameId
+    ) {
+        return gameService.getMoves(
                 gameId,
                 currentUserService.getCurrentUserId()
         );
@@ -94,4 +113,5 @@ public class GameController {
                 request
         );
     }
+
 }

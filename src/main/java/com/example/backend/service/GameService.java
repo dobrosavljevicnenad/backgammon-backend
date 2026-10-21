@@ -13,6 +13,9 @@ import com.example.backend.repository.GamePlayerRepository;
 import com.example.backend.repository.GameRepository;
 import com.example.backend.repository.RoomPlayerRepository;
 import com.example.backend.repository.RoomRepository;
+import com.example.backend.dto.response.MoveResponse;
+import com.example.backend.entity.Move;
+import com.example.backend.repository.MoveRepository;
 
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -22,6 +25,7 @@ import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
 import java.security.SecureRandom;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -36,6 +40,7 @@ public class GameService {
     private final RoomPlayerRepository roomPlayerRepository;
     private final InitialGameStateFactory initialGameStateFactory;
     private final GameUpdateBroadcaster broadcaster;
+    private final MoveRepository moveRepository;
     private final ObjectMapper objectMapper;
     private final Random random = new SecureRandom();
 
@@ -47,6 +52,8 @@ public class GameService {
             InitialGameStateFactory initialGameStateFactory,
             GameUpdateBroadcaster broadcaster,
             ObjectMapper objectMapper
+            ObjectMapper objectMapper,
+            MoveRepository moveRepository
     ) {
         this.gameRepository = gameRepository;
         this.gamePlayerRepository = gamePlayerRepository;
@@ -55,6 +62,7 @@ public class GameService {
         this.initialGameStateFactory = initialGameStateFactory;
         this.broadcaster = broadcaster;
         this.objectMapper = objectMapper;
+        this.moveRepository = moveRepository;
     }
 
     // START GAME - only the host, only with exactly two players
@@ -148,6 +156,48 @@ public class GameService {
         return response;
     }
 
+    // FINISH GAME - a player gives up. Game becomes ABANDONED, room becomes CLOSED,
+    // so both players can create or join a new room afterwards.
+    // TODO: game engine step - replace with the real end-of-game flow (winner, FINISHED)
+    @Transactional
+    public GameResponse finishGame(Long gameId, Long userId) {
+
+        Game game = gameRepository.findById(gameId)
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.NOT_FOUND,
+                        "Game not found"
+                ));
+
+        if (!gamePlayerRepository.existsByGameIdAndUserId(gameId, userId)) {
+            throw new ResponseStatusException(
+                    HttpStatus.FORBIDDEN,
+                    "You are not a player in this game"
+            );
+        }
+
+        if (game.getStatus() != GameStatus.IN_PROGRESS) {
+            throw new ResponseStatusException(
+                    HttpStatus.CONFLICT,
+                    "Game is not in progress"
+            );
+        }
+
+        // Same lock as startGame, so room and game status change together
+        Room room = roomRepository.findByIdForUpdate(game.getRoom().getId())
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.NOT_FOUND,
+                        "Room not found"
+                ));
+
+        game.setStatus(GameStatus.ABANDONED);
+        game.setFinishedAt(Instant.now());
+        room.setStatus(RoomStatus.CLOSED);
+
+        roomRepository.save(room);
+
+        return toResponse(gameRepository.save(game));
+    }
+
     // GET GAME BY ID
     @Transactional(readOnly = true)
     public GameResponse getGameById(Long gameId) {
@@ -180,6 +230,47 @@ public class GameService {
 
     // ENTITY -> DTO (package-private: reused by MoveService)
     GameResponse toResponse(Game game) {
+    // GET MOVES OF A GAME - only players of that game can see them
+    @Transactional(readOnly = true)
+    public List<MoveResponse> getMoves(Long gameId, Long userId) {
+
+        if (!gameRepository.existsById(gameId)) {
+            throw new ResponseStatusException(
+                    HttpStatus.NOT_FOUND,
+                    "Game not found"
+            );
+        }
+
+        if (!gamePlayerRepository.existsByGameIdAndUserId(gameId, userId)) {
+            throw new ResponseStatusException(
+                    HttpStatus.FORBIDDEN,
+                    "You are not a player in this game"
+            );
+        }
+
+        return moveRepository.findByGameIdOrderByTurnNumberAscMoveNumberAsc(gameId)
+                .stream()
+                .map(this::toMoveResponse)
+                .toList();
+    }
+
+    // ENTITY -> DTO
+    private MoveResponse toMoveResponse(Move move) {
+        return new MoveResponse(
+                move.getId(),
+                move.getGame().getId(),
+                move.getGamePlayer().getId(),
+                move.getTurnNumber(),
+                move.getMoveNumber(),
+                move.getFromPosition(),
+                move.getToPosition(),
+                move.getDiceValue(),
+                move.getCreatedAt()
+        );
+    }
+
+    // ENTITY -> DTO
+    private GameResponse toResponse(Game game) {
 
         Long currentTurnUserId =
                 game.getCurrentTurnUser() == null

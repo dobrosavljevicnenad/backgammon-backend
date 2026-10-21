@@ -32,14 +32,28 @@ public class RoomPlayerService {
         this.roomMembershipRules = roomMembershipRules;
     }
 
-    // GET ALL PLAYERS IN A ROOM
+    // GET ALL PLAYERS IN A ROOM - only members
     @Transactional(readOnly = true)
-    public List<RoomPlayerResponse> getRoomPlayers(Long roomId) {
+    public List<RoomPlayerResponse> getRoomPlayers(Long roomId, Long userId) {
+
+        if (roomId == null || roomId <= 0) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "Room ID must be a positive integer"
+            );
+        }
 
         if (!roomRepository.existsById(roomId)) {
             throw new ResponseStatusException(
                     HttpStatus.NOT_FOUND,
                     "Room not found"
+            );
+        }
+
+        if (!roomPlayerRepository.existsByRoomIdAndUserId(roomId, userId)) {
+            throw new ResponseStatusException(
+                    HttpStatus.FORBIDDEN,
+                    "You are not in this room"
             );
         }
 
