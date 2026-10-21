@@ -1,11 +1,16 @@
 package com.example.backend.controller;
 
+import com.example.backend.dto.request.MakeMoveRequest;
 import com.example.backend.dto.response.GameResponse;
 import com.example.backend.dto.response.MoveResponse;
 import com.example.backend.dto.response.GamePlayerResponse;
+import com.example.backend.dto.response.GameResponse;
+import com.example.backend.dto.response.LegalMoveResponse;
 import com.example.backend.service.CurrentUserService;
 import com.example.backend.service.GameService;
+import com.example.backend.service.MoveService;
 
+import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.*;
 
@@ -16,13 +21,16 @@ import java.util.List;
 public class GameController {
 
     private final GameService gameService;
+    private final MoveService moveService;
     private final CurrentUserService currentUserService;
 
     public GameController(
             GameService gameService,
+            MoveService moveService,
             CurrentUserService currentUserService
     ) {
         this.gameService = gameService;
+        this.moveService = moveService;
         this.currentUserService = currentUserService;
     }
 
@@ -65,6 +73,12 @@ public class GameController {
         return gameService.getGamePlayers(gameId);
     }
 
+    // POST /api/games/1/roll - current turn's player rolls the dice
+    @PostMapping("/{gameId}/roll")
+    public GameResponse rollDice(
+            @PathVariable Long gameId
+    ) {
+        return moveService.rollDice(
     // GET /api/games/1/moves - all moves of the game, only for its players
     @GetMapping("/{gameId}/moves")
     public List<MoveResponse> getMoves(
@@ -76,5 +90,28 @@ public class GameController {
         );
     }
 
+    // GET /api/games/1/legal-moves - moves available with the current roll
+    @GetMapping("/{gameId}/legal-moves")
+    public List<LegalMoveResponse> legalMoves(
+            @PathVariable Long gameId
+    ) {
+        return moveService.legalMoves(
+                gameId,
+                currentUserService.getCurrentUserId()
+        );
+    }
+
+    // POST /api/games/1/moves - apply one checker move for one die
+    @PostMapping("/{gameId}/moves")
+    public GameResponse makeMove(
+            @PathVariable Long gameId,
+            @Valid @RequestBody MakeMoveRequest request
+    ) {
+        return moveService.makeMove(
+                gameId,
+                currentUserService.getCurrentUserId(),
+                request
+        );
+    }
 
 }

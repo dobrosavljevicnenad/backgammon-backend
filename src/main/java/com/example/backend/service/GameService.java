@@ -39,6 +39,7 @@ public class GameService {
     private final RoomRepository roomRepository;
     private final RoomPlayerRepository roomPlayerRepository;
     private final InitialGameStateFactory initialGameStateFactory;
+    private final GameUpdateBroadcaster broadcaster;
     private final MoveRepository moveRepository;
     private final ObjectMapper objectMapper;
     private final Random random = new SecureRandom();
@@ -49,6 +50,8 @@ public class GameService {
             RoomRepository roomRepository,
             RoomPlayerRepository roomPlayerRepository,
             InitialGameStateFactory initialGameStateFactory,
+            GameUpdateBroadcaster broadcaster,
+            ObjectMapper objectMapper
             ObjectMapper objectMapper,
             MoveRepository moveRepository
     ) {
@@ -57,6 +60,7 @@ public class GameService {
         this.roomRepository = roomRepository;
         this.roomPlayerRepository = roomPlayerRepository;
         this.initialGameStateFactory = initialGameStateFactory;
+        this.broadcaster = broadcaster;
         this.objectMapper = objectMapper;
         this.moveRepository = moveRepository;
     }
@@ -147,7 +151,9 @@ public class GameService {
         room.setStatus(RoomStatus.PLAYING);
         roomRepository.save(room);
 
-        return toResponse(savedGame);
+        GameResponse response = toResponse(savedGame);
+        broadcaster.broadcast(response);
+        return response;
     }
 
     // FINISH GAME - a player gives up. Game becomes ABANDONED, room becomes CLOSED,
@@ -222,6 +228,8 @@ public class GameService {
                 .toList();
     }
 
+    // ENTITY -> DTO (package-private: reused by MoveService)
+    GameResponse toResponse(Game game) {
     // GET MOVES OF A GAME - only players of that game can see them
     @Transactional(readOnly = true)
     public List<MoveResponse> getMoves(Long gameId, Long userId) {
