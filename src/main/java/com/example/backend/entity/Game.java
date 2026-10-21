@@ -57,6 +57,14 @@ public class Game {
     @Column(name = "finished_at")
     private Instant finishedAt;
 
+    // Opening roll: each player rolls one die, the higher one starts.
+    // currentTurnUser stays null until the opening roll is resolved.
+    @Column(name = "opening_white_die")
+    private Integer openingWhiteDie;
+
+    @Column(name = "opening_black_die")
+    private Integer openingBlackDie;
+
     @Version
     @Column(nullable = false)
     private Long version;

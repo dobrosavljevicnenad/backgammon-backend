@@ -61,12 +61,18 @@ public class MoveService {
         this.objectMapper = objectMapper;
     }
 
-    // POST /api/games/{gameId}/roll - current turn's player rolls the dice
+    // POST /api/games/{gameId}/roll - opening roll while no one has the turn yet,
+    // otherwise the current turn's player rolls the dice
     @Transactional
     public GameResponse rollDice(Long gameId, Long userId) {
 
         Game game = loadForUpdate(gameId);
         requireInProgress(game);
+
+        if (game.getCurrentTurnUser() == null) {
+            return rollOpeningDie(game, userId);
+        }
+
         requireCurrentTurn(game, userId);
 
         GameState state = GameState.fromJson(objectMapper, game.getCurrentState());
@@ -94,6 +100,63 @@ public class MoveService {
         GameResponse response = gameService.toResponse(saved);
         broadcaster.broadcast(response);
         return response;
+    }
+
+    // Opening roll: each player rolls one die, the higher one starts.
+    // A tie clears both dice so the players roll again.
+    private GameResponse rollOpeningDie(Game game, Long userId) {
+        GamePlayer gamePlayer = gamePlayerRepository.findByGameIdAndUserId(game.getId(), userId)
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.FORBIDDEN,
+                        "You are not a player in this game"
+                ));
+
+        boolean isWhite = gamePlayer.getColor() == CheckerColor.WHITE;
+        Integer alreadyRolled = isWhite ? game.getOpeningWhiteDie() : game.getOpeningBlackDie();
+        if (alreadyRolled != null) {
+            throw new ResponseStatusException(
+                    HttpStatus.CONFLICT,
+                    "You already rolled for the opening"
+            );
+        }
+
+        int die = diceService.roll().get(0);
+        if (isWhite) {
+            game.setOpeningWhiteDie(die);
+        } else {
+            game.setOpeningBlackDie(die);
+        }
+
+        if (game.getOpeningWhiteDie() != null && game.getOpeningBlackDie() != null) {
+            resolveOpening(game);
+        }
+
+        GameResponse response = gameService.toResponse(gameRepository.save(game));
+        broadcaster.broadcast(response);
+        return response;
+    }
+
+    private void resolveOpening(Game game) {
+        int white = game.getOpeningWhiteDie();
+        int black = game.getOpeningBlackDie();
+
+        if (white == black) {
+            game.setOpeningWhiteDie(null);
+            game.setOpeningBlackDie(null);
+            return;
+        }
+
+        CheckerColor starterColor = white > black ? CheckerColor.WHITE : CheckerColor.BLACK;
+        GamePlayer starter = gamePlayerRepository.findByGameId(game.getId())
+                .stream()
+                .filter(p -> p.getColor() == starterColor)
+                .findFirst()
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.INTERNAL_SERVER_ERROR,
+                        "Starting player not found"
+                ));
+
+        game.setCurrentTurnUser(starter.getUser());
     }
 
     // GET /api/games/{gameId}/legal-moves - moves available with the current roll
@@ -183,6 +246,7 @@ public class MoveService {
             game.setFinishedAt(Instant.now());
             gamePlayer.setWinner(true);
             gamePlayerRepository.save(gamePlayer);
+            gameService.settleFinishedGame(game, gamePlayer);
         } else if (!GameEngine.hasAnyLegalMove(newBoard, color, remainingDice)) {
             switchTurn(game);
             state.setDice(List.of());

@@ -13,6 +13,7 @@ import com.example.backend.repository.GamePlayerRepository;
 import com.example.backend.repository.GameRepository;
 import com.example.backend.repository.RoomPlayerRepository;
 import com.example.backend.repository.RoomRepository;
+import com.example.backend.repository.UserRepository;
 import com.example.backend.dto.response.MoveResponse;
 import com.example.backend.entity.Move;
 import com.example.backend.repository.MoveRepository;
@@ -42,6 +43,8 @@ public class GameService {
     private final GameUpdateBroadcaster broadcaster;
     private final MoveRepository moveRepository;
     private final ObjectMapper objectMapper;
+    private final EloRatingService eloRatingService;
+    private final UserRepository userRepository;
     private final Random random = new SecureRandom();
 
     public GameService(
@@ -52,7 +55,9 @@ public class GameService {
             InitialGameStateFactory initialGameStateFactory,
             GameUpdateBroadcaster broadcaster,
             ObjectMapper objectMapper,
-            MoveRepository moveRepository
+            MoveRepository moveRepository,
+            EloRatingService eloRatingService,
+            UserRepository userRepository
     ) {
         this.gameRepository = gameRepository;
         this.gamePlayerRepository = gamePlayerRepository;
@@ -62,6 +67,8 @@ public class GameService {
         this.broadcaster = broadcaster;
         this.objectMapper = objectMapper;
         this.moveRepository = moveRepository;
+        this.eloRatingService = eloRatingService;
+        this.userRepository = userRepository;
     }
 
     // START GAME - only the host, only with exactly two players
@@ -122,9 +129,8 @@ public class GameService {
         game.setTurnNumber(1);
         game.setCurrentState(initialGameStateFactory.create());
 
-        // Temporary rule: WHITE starts first.
-        // TODO: replace with the standard opening roll + turnDeadline (game engine step)
-        game.setCurrentTurnUser(white.getUser());
+        // First player is decided by the opening roll (MoveService.rollDice)
+        game.setCurrentTurnUser(null);
 
         Game savedGame = gameRepository.save(game);
 
@@ -155,9 +161,8 @@ public class GameService {
         return response;
     }
 
-    // FINISH GAME - a player gives up. Game becomes ABANDONED, room becomes CLOSED,
-    // so both players can create or join a new room afterwards.
-    // TODO: game engine step - replace with the real end-of-game flow (winner, FINISHED)
+    // FINISH GAME - a player gives up. The opponent wins, game becomes FINISHED,
+    // Elo is applied and the room becomes CLOSED.
     @Transactional
     public GameResponse finishGame(Long gameId, Long userId) {
 
@@ -182,19 +187,55 @@ public class GameService {
         }
 
         // Same lock as startGame, so room and game status change together
-        Room room = roomRepository.findByIdForUpdate(game.getRoom().getId())
+        roomRepository.findByIdForUpdate(game.getRoom().getId())
                 .orElseThrow(() -> new ResponseStatusException(
                         HttpStatus.NOT_FOUND,
                         "Room not found"
                 ));
 
-        game.setStatus(GameStatus.ABANDONED);
-        game.setFinishedAt(Instant.now());
-        room.setStatus(RoomStatus.CLOSED);
+        GamePlayer opponent = gamePlayerRepository.findByGameId(gameId)
+                .stream()
+                .filter(p -> !p.getUser().getId().equals(userId))
+                .findFirst()
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.INTERNAL_SERVER_ERROR,
+                        "Opponent not found"
+                ));
 
-        roomRepository.save(room);
+        opponent.setWinner(true);
+        gamePlayerRepository.save(opponent);
+        game.setStatus(GameStatus.FINISHED);
+        game.setFinishedAt(Instant.now());
+        settleFinishedGame(game, opponent);
 
         return toResponse(gameRepository.save(game));
+    }
+
+    // Applies the final result: Elo for both players, room becomes CLOSED.
+    // Called once, when the game changes to FINISHED.
+    @Transactional
+    public void settleFinishedGame(Game game, GamePlayer winner) {
+        GamePlayer loser = gamePlayerRepository.findByGameId(game.getId())
+                .stream()
+                .filter(p -> !p.getUser().getId().equals(winner.getUser().getId()))
+                .findFirst()
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.INTERNAL_SERVER_ERROR,
+                        "Loser not found"
+                ));
+
+        EloRatingResult ratings = eloRatingService.calculateRatings(
+                winner.getUser().getRating(),
+                loser.getUser().getRating()
+        );
+        winner.getUser().setRating(ratings.winnerRating());
+        loser.getUser().setRating(ratings.loserRating());
+        userRepository.save(winner.getUser());
+        userRepository.save(loser.getUser());
+
+        Room room = game.getRoom();
+        room.setStatus(RoomStatus.CLOSED);
+        roomRepository.save(room);
     }
 
     // GET GAME BY ID
@@ -283,7 +324,9 @@ public class GameService {
                 game.getTurnNumber(),
                 game.getTurnDeadline(),
                 game.getStartedAt(),
-                game.getFinishedAt()
+                game.getFinishedAt(),
+                game.getOpeningWhiteDie(),
+                game.getOpeningBlackDie()
         );
     }
 

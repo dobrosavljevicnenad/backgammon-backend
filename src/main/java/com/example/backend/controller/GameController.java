@@ -45,7 +45,7 @@ public class GameController {
         );
     }
 
-    // POST /api/games/1/finish - a player gives up, game is ABANDONED and room is CLOSED
+    // POST /api/games/1/finish - a player gives up, the opponent wins (FINISHED), Elo is applied and room is CLOSED
     @PostMapping("/{gameId}/finish")
     public GameResponse finishGame(
             @PathVariable Long gameId

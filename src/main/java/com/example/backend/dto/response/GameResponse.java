@@ -13,5 +13,7 @@ public record GameResponse(
         int turnNumber,
         Instant turnDeadline,
         Instant startedAt,
-        Instant finishedAt
+        Instant finishedAt,
+        Integer openingWhiteDie,
+        Integer openingBlackDie
 ) {}
