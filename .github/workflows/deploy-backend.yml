@@ -1,0 +1,95 @@
+name: Deploy backend
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: deploy-backend
+  cancel-in-progress: false
+
+env:
+  AWS_REGION: eu-north-1
+  JAR_NAME: backend-0.0.1-SNAPSHOT.jar
+  REMOTE_JAR: /home/ubuntu/app/backgammon-backend/target/backend-0.0.1-SNAPSHOT.jar
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: maven
+
+      # BackendApplicationTests needs a running MySQL, so it is skipped in CI.
+      - name: Build and test
+        run: |
+          chmod +x mvnw
+          ./mvnw -B package -Dtest='!BackendApplicationTests' -Dsurefire.failIfNoSpecifiedTests=false
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: backend-jar
+          path: target/backend-0.0.1-SNAPSHOT.jar
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: backend-jar
+          path: artifact
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Upload JAR to S3
+        env:
+          S3_KEY: s3://${{ vars.DEPLOY_BUCKET }}/backend/${{ github.sha }}.jar
+        run: aws s3 cp "artifact/$JAR_NAME" "$S3_KEY"
+
+      - name: Deploy on EC2 via SSM
+        id: deploy
+        env:
+          INSTANCE_ID: ${{ vars.EC2_INSTANCE_ID }}
+          S3_KEY: s3://${{ vars.DEPLOY_BUCKET }}/backend/${{ github.sha }}.jar
+        run: |
+          PARAMS=$(jq -n --arg src "$S3_KEY" --arg dst "$REMOTE_JAR" '{commands: [
+            "cp -f \($dst) \($dst).prev || true",
+            "aws s3 cp \($src) /tmp/backend-new.jar",
+            "install -o ubuntu -g ubuntu -m 644 /tmp/backend-new.jar \($dst)",
+            "rm -f /tmp/backend-new.jar",
+            "systemctl restart backgammon",
+            "sleep 5",
+            "systemctl is-active --quiet backgammon"
+          ]}')
+          CMD_ID=$(aws ssm send-command \
+            --instance-ids "$INSTANCE_ID" \
+            --document-name "AWS-RunShellScript" \
+            --comment "Deploy $GITHUB_SHA" \
+            --parameters "$PARAMS" \
+            --query "Command.CommandId" --output text)
+          echo "cmd_id=$CMD_ID" >> "$GITHUB_OUTPUT"
+          aws ssm wait command-executed --command-id "$CMD_ID" --instance-id "$INSTANCE_ID"
+
+      - name: Show remote error output
+        if: failure()
+        env:
+          INSTANCE_ID: ${{ vars.EC2_INSTANCE_ID }}
+          CMD_ID: ${{ steps.deploy.outputs.cmd_id }}
+        run: |
+          aws ssm get-command-invocation --command-id "$CMD_ID" --instance-id "$INSTANCE_ID" \
+            --query "[Status, StandardOutputContent, StandardErrorContent]" --output text || true
