@@ -31,6 +31,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -254,6 +255,7 @@ class MoveServiceTest {
         assertEquals(1, result.getBoard().at(24));
         // Turn stays with WHITE: die 5 still has a legal move (13 -> 8).
         assertEquals(whiteUser.getId(), game.getCurrentTurnUser().getId());
+        verify(gameService, never()).settleFinishedGame(any(), any());
     }
 
     @Test
@@ -303,5 +305,11 @@ class MoveServiceTest {
         assertTrue(whitePlayer.isWinner());
         assertEquals(15, currentState().getBoard().offCount(CheckerColor.WHITE));
         assertFalse(currentState().getBoard().at(3) > 0);
+
+        ResponseStatusException ex = assertThrows(ResponseStatusException.class,
+                () -> moveService.makeMove(1L, whiteUser.getId(), request));
+
+        assertEquals(409, ex.getStatusCode().value());
+        verify(gameService).settleFinishedGame(game, whitePlayer);
     }
 }

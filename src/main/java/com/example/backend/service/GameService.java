@@ -162,7 +162,7 @@ public class GameService {
     }
 
     // FINISH GAME - a player gives up. The opponent wins, game becomes FINISHED,
-    // Elo is applied and the room becomes CLOSED.
+    // wins/losses and Elo are applied and the room becomes CLOSED.
     @Transactional
     public GameResponse finishGame(Long gameId, Long userId) {
 
@@ -211,7 +211,7 @@ public class GameService {
         return toResponse(gameRepository.save(game));
     }
 
-    // Applies the final result: Elo for both players, room becomes CLOSED.
+    // Applies the final result: wins/losses and Elo for both players, room becomes CLOSED.
     // Called once, when the game changes to FINISHED.
     @Transactional
     public void settleFinishedGame(Game game, GamePlayer winner) {
@@ -230,6 +230,8 @@ public class GameService {
         );
         winner.getUser().setRating(ratings.winnerRating());
         loser.getUser().setRating(ratings.loserRating());
+        winner.getUser().setWins(winner.getUser().getWins() + 1);
+        loser.getUser().setLosses(loser.getUser().getLosses() + 1);
         userRepository.save(winner.getUser());
         userRepository.save(loser.getUser());
 
